@@ -11,8 +11,15 @@ const server = http.createServer(app);
 app.use(express.static(path.join(__dirname)));
 
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: {
+        origin: "*", 
+        methods: ["GET", "POST"]
+    },
+    // WICHTIG: Setzen Sie den Pfad hier explizit.
+    path: '/socket.io/' 
 });
+
+// ... io.on('connection', ...) Code unten ...
 
 // --- KONSTANTEN ---
 const PORT = process.env.PORT || 3000; 
