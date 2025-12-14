@@ -1,7 +1,7 @@
 {
   "name": "assoziations-duell-server",
   "version": "1.0.0",
-  "description": "Socket.IO Server für das Assoziations-Duell",
+  "description": "Socket.IO Server für das Assoziations-Duell, gehostet auf Raspberry Pi.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,7 +9,8 @@
   "keywords": [
     "socket.io",
     "express",
-    "multiplayer"
+    "multiplayer",
+    "raspberrypi"
   ],
   "author": "",
   "license": "ISC",
