@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assoziations-Duell (Multiplayer)</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        
+        <div id="lobby-view">
+            <h1>Assoziations-Duell</h1>
+            
+            <input type="text" id="username-input" placeholder="Dein Name" maxlength="15">
+            <br><br>
+            
+            <div id="lobby-message"></div>
+            
+            <input type="text" id="room-input" placeholder="Raum Code (zum Beitreten)">
+            <br>
+            
+            <button id="create-btn">Neuen Raum erstellen</button>
+            <button id="join-btn">Raum beitreten</button>
+        </div>
+
+        <div id="game-view">
+            
+            <div style="font-size: 0.8rem; color: #bdc3c7; margin-bottom: 10px;">
+                <span id="room-display">Raum: --</span>
+                <button id="copy-room-btn" style="margin-left: 10px; padding: 5px 10px; display: none;">Link kopieren</button>
+            </div>
+            
+            <div class="topic-box">
+                <div class="topic-label">Aktueller Begriff:</div>
+                <div id="topic-text" class="topic-text">Warte auf Start...</div>
+            </div>
+
+            <p id="status-msg">Warte auf Spieler...</p>
+            
+            <input type="text" id="game-input" placeholder="Deine Antwort..." disabled>
+            <button id="send-btn" disabled>Senden</button>
+
+            <div id="reveal-area" class="reveal-box" style="display: none;">
+                </div>
+
+            <div id="history-container">
+                <div style="margin-bottom: 5px; font-weight: bold;">Letzte Runden:</div>
+                <div id="history-list">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
