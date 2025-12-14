@@ -1,239 +1,197 @@
-// --- DEINE RENDER URL (ANPASSEN!) ---
-const SERVER_URL = 'https://multiplayer-server-3mkd.onrender.com'; 
-const socket = io(SERVER_URL); 
+const socket = io(); // Verbindet sich automatisch mit dem Host und Port (z.B. :7000)
+const appContainer = document.getElementById('app');
+const messageArea = document.getElementById('message-area');
+const form = document.getElementById('term-form');
+const input = document.getElementById('term-input');
+const codeInput = document.getElementById('code-input');
+const usernameInput = document.getElementById('username-input');
 
-// Elemente
-const lobbyView = document.getElementById('lobby-view');
-const gameView = document.getElementById('game-view');
-const topicText = document.getElementById('topic-text');
-const gameInput = document.getElementById('game-input');
-const sendBtn = document.getElementById('send-btn');
-const statusMsg = document.getElementById('status-msg');
-const revealArea = document.getElementById('reveal-area');
-const historyList = document.getElementById('history-list');
-const lobbyMessage = document.getElementById('lobby-message');
-const roomDisplay = document.getElementById('room-display');
-const copyButton = document.getElementById('copy-room-btn'); 
+let currentRoomCode = '';
 
-let myUsername = "Spieler";
-let currentRoomCode = null; 
+// --- UI / Navigation ---
 
-// Countdown Variablen
-const REVEAL_DURATION_S = 10; 
-let countdownInterval = null;
-
-// --- HILFSFUNKTIONEN ---
-
-function copyRoomLink() {
-    if (!currentRoomCode) return;
-    
-    const url = `${window.location.origin}?code=${currentRoomCode}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-        alert("Raumlink und Code in die Zwischenablage kopiert! Der Link öffnet die Lobby direkt.");
-        copyButton.innerText = "Link kopiert!";
-        setTimeout(() => { copyButton.innerText = "Link kopieren"; }, 2000);
-    }).catch(err => {
-        console.error('Kopieren fehlgeschlagen:', err);
-        alert(`Fehler beim Kopieren. Code: ${currentRoomCode}`);
-    });
+function renderWelcome() {
+    appContainer.innerHTML = `
+        <h2>Assosiation Duell</h2>
+        <div class="input-group">
+            <input type="text" id="start-username" placeholder="Dein Name" maxlength="15" required value="Spieler-${Math.floor(Math.random() * 100)}">
+            <button onclick="createRoom()">Raum erstellen</button>
+        </div>
+        <div class="input-group">
+            <input type="text" id="join-code" placeholder="Raum Code (ABCD)" maxlength="4">
+            <button onclick="joinRoom()">Beitreten</button>
+        </div>
+        <p class="small-info">Maximal 8 Spieler. Spiel startet bei 2 Spielern.</p>
+    `;
+    // Stellt sicher, dass das Formular bei jedem Neuladen verfügbar ist
+    form.onsubmit = (e) => { e.preventDefault(); }; 
 }
 
-function startCountdown(duration) {
-    let timeLeft = duration;
+function renderLobby(code, players = [], topic = null) {
+    const playerListHtml = players.map(p => `<li>${p.username} (${p.id === socket.id ? 'DU' : 'Gast'})</li>`).join('');
     
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
+    appContainer.innerHTML = `
+        <h2>Warteraum: ${code}</h2>
+        <p>Der Host entscheidet, wann es losgeht.</p>
+        <div class="player-list-container">
+            <h3>Spieler (${players.length}/8):</h3>
+            <ul id="player-list">${playerListHtml}</ul>
+        </div>
+        <p class="small-info">Teile den Code: <strong>${code}</strong></p>
+    `;
+    if (topic) {
+         renderGame(topic); // Wenn die Runde bereits läuft, direkt zum Spiel wechseln
     }
-    
-    statusMsg.innerText = `Nächster Begriff in ${timeLeft} Sekunden...`;
-
-    countdownInterval = setInterval(() => {
-        timeLeft--;
-        if (timeLeft > 0) {
-            statusMsg.innerText = `Nächster Begriff in ${timeLeft} Sekunden...`;
-        } else {
-            clearInterval(countdownInterval);
-            statusMsg.innerText = "Nächster Begriff wird geladen..."; 
-        }
-    }, 1000);
 }
 
-// --- LOBBY LOGIK ---
-
-const urlParams = new URLSearchParams(window.location.search);
-const initialCode = urlParams.get('code');
-if (initialCode) {
-    document.getElementById('room-input').value = initialCode;
-    lobbyMessage.innerText = `Bereit, Raum ${initialCode} beizutreten. Name eingeben!`;
+function renderGame(topic) {
+    appContainer.innerHTML = `
+        <h2>Thema: ${topic}</h2>
+        <p id="game-status">Gib deinen assoziierten Begriff ein:</p>
+        <form id="term-form">
+            <input type="text" id="term-input" placeholder="Dein Begriff" maxlength="30" required>
+            <button type="submit">Senden</button>
+        </form>
+    `;
+    
+    // Formular-Listener neu setzen
+    const currentForm = document.getElementById('term-form');
+    if (currentForm) {
+        currentForm.onsubmit = handleTermSubmit;
+    }
+    document.getElementById('term-input').focus();
 }
 
-document.getElementById('create-btn').addEventListener('click', () => {
-    myUsername = document.getElementById('username-input').value || "Host";
-    if (myUsername.length < 2) { alert("Bitte gib einen Namen ein."); return; }
+function renderReveal(data) {
+    const topic = data.topic;
+    const answers = data.answers;
     
-    socket.emit('createRoom', { username: myUsername });
-    lobbyMessage.innerText = "Erstelle Raum...";
-});
+    let answerListHtml = answers.map(item => 
+        `<li class="reveal-item"><strong>${item.username}:</strong> ${item.term}</li>`
+    ).join('');
 
-document.getElementById('join-btn').addEventListener('click', () => {
-    myUsername = document.getElementById('username-input').value || "Gast";
-    const code = document.getElementById('room-input').value.toUpperCase();
+    appContainer.innerHTML = `
+        <h2 class="reveal-header">✨ AUFLÖSUNG: ${topic} ✨</h2>
+        <ul class="reveal-list">${answerListHtml}</ul>
+        <p class="small-info">Neue Runde startet in 10 Sekunden...</p>
+    `;
+}
+
+function displayMessage(message, type = 'info') {
+    const msgElement = document.createElement('div');
+    msgElement.className = `message ${type}`;
+    msgElement.textContent = message;
     
-    if (myUsername.length < 2) { alert("Bitte gib einen Namen ein."); return; }
-    if(code) {
-        socket.emit('joinRoom', { code: code, username: myUsername });
-        lobbyMessage.innerText = "Trete Raum " + code + " bei...";
-    } else {
-        lobbyMessage.innerText = "Code fehlt!";
-    }
-});
+    // Fügt die Nachricht oben ein
+    messageArea.insertBefore(msgElement, messageArea.firstChild); 
+    
+    setTimeout(() => {
+        msgElement.classList.add('fade-out');
+        msgElement.addEventListener('transitionend', () => msgElement.remove());
+    }, 5000);
+}
 
-// --- SPIEL LOGIK ---
-document.getElementById('send-btn').addEventListener('click', sendAnswer);
+// --- Handler ---
 
-// *** KORREKTUR: Enter-Taste zum Senden in der Lobby und im Spiel (wenn Input aktiv) ***
-document.addEventListener('keypress', (e) => { 
-    if (e.key === 'Enter') {
-        // 1. Wenn in der Lobby
-        if (lobbyView.style.display !== 'none') {
-            const activeElement = document.activeElement;
-            if (activeElement === document.getElementById('room-input') || activeElement === document.getElementById('username-input')) {
-                 // Füge standardmäßig zur Einfachheit bei Enter im Input-Feld bei
-                 document.getElementById('join-btn').click();
-            }
-        }
-        // 2. Wenn im Spiel und Input nicht disabled
-        else if (gameView.style.display !== 'none' && !gameInput.disabled) {
-            sendAnswer();
-        }
-    }
-});
+function createRoom() {
+    const username = document.getElementById('start-username').value;
+    if (!username) return;
+    
+    socket.emit('createRoom', { username });
+}
 
-function sendAnswer() {
-    const term = gameInput.value.trim();
+function joinRoom() {
+    const code = document.getElementById('join-code').value;
+    const username = document.getElementById('start-username').value;
+    if (!code || !username) return;
+    
+    socket.emit('joinRoom', { code, username });
+}
+
+function handleTermSubmit(e) {
+    e.preventDefault();
+    const termInput = document.getElementById('term-input');
+    const term = termInput.value.trim();
+    
     if (term) {
         socket.emit('submitAnswer', term);
-        gameInput.disabled = true;
-        sendBtn.disabled = true;
-        gameInput.value = "";
-        statusMsg.innerText = "⏳ Du hast abgegeben. Warte auf Mitspieler..."; 
+        termInput.value = '';
+        document.getElementById('game-status').textContent = 'Warten auf die anderen Spieler...';
+        termInput.disabled = true;
+        document.querySelector('#term-form button').disabled = true;
     }
 }
 
-// --- SERVER EVENTS ---
+// --- Socket.IO Listener ---
+
+socket.on('connect', () => {
+    displayMessage('Verbunden mit dem Server.', 'success');
+    // If we reconnect, check if we were in a room (simplification: not strictly necessary for this simple game, but good practice)
+    if (currentRoomCode) {
+         // Versuch, den Status neu zu synchronisieren
+    }
+});
+
+socket.on('disconnect', () => {
+    displayMessage('Verbindung zum Server unterbrochen.', 'error');
+});
+
+socket.on('error', (message) => {
+    displayMessage(`Fehler: ${message}`, 'error');
+});
 
 socket.on('roomCreated', (code) => {
     currentRoomCode = code;
-    lobbyView.style.display = 'none';
-    gameView.style.display = 'block';
-    roomDisplay.innerText = "Raum: " + code;
-    statusMsg.innerText = "Warte auf weitere Mitspieler...";
-    lobbyMessage.innerText = "";
-    copyButton.style.display = 'block'; 
-    copyButton.addEventListener('click', copyRoomLink);
+    displayMessage(`Raum ${code} erstellt!`, 'success');
+    renderLobby(code, [{ id: socket.id, username: document.getElementById('start-username').value }]);
 });
 
-// KORREKTUR: Gast erhält jetzt auch Topic-Information
 socket.on('roomJoined', (data) => {
     currentRoomCode = data.code;
-    roomDisplay.innerText = "Raum: " + data.code;
-    
+    displayMessage(`Raum ${data.code} beigetreten.`, 'success');
     if (data.topic) {
-        // Wenn eine Runde läuft, zeige den Begriff an
-        topicText.innerText = data.topic;
+        // Der Spieler tritt mitten in einer Runde bei
+        renderGame(data.topic);
+    } else {
+        // Der Spieler tritt in der Lobby bei
+        // Spielerliste wird später vom gameStart-Event gesendet
+        renderLobby(data.code); 
     }
 });
 
 socket.on('gameStart', () => {
-    lobbyView.style.display = 'none';
-    gameView.style.display = 'block';
-    lobbyMessage.innerText = "";
-    if (copyButton) copyButton.style.display = 'block'; 
-    if (!copyButton.onclick) copyButton.addEventListener('click', copyRoomLink);
+     // Dieses Event signalisiert, dass das Spiel gestartet wurde, aber 'newRound' liefert das Topic
+     // Wir erwarten bald 'newRound'
+     displayMessage('Das Spiel beginnt!', 'info');
+});
+
+socket.on('newRound', (data) => {
+    // Hier bekommt jeder Spieler das Thema
+    renderGame(data.topic);
+});
+
+socket.on('roundReveal', (data) => {
+    renderReveal(data);
+});
+
+socket.on('waitingForOpponent', (data) => {
+    const statusElement = document.getElementById('game-status');
+    if (statusElement) {
+        statusElement.textContent = `Warten auf ${data.count} weitere(n) Spieler...`;
+    }
 });
 
 socket.on('playerLeft', (data) => {
-    alert(`${data.username} hat den Raum verlassen.`);
-    statusMsg.innerText = `Spieler ${data.username} hat verlassen. Warte auf andere...`;
+    displayMessage(`Spieler ${data.username} hat den Raum verlassen.`, 'warning');
+    // Nur in der Lobby ist es relevant, die Liste zu aktualisieren (simplifiziert)
+    // Wenn das Spiel läuft, bleibt der Game Screen
 });
 
-socket.on('gameStop', (msg) => {
-    alert(msg);
-    window.location.href = window.location.origin;
+socket.on('gameStop', (message) => {
+    displayMessage(`Spiel gestoppt: ${message}`, 'error');
+    currentRoomCode = '';
+    renderWelcome(); // Zurück zum Startbildschirm
 });
 
-
-socket.on('waitingForOpponent', (data) => {
-    const msg = data.count === 1 
-        ? "Warte auf 1 weiteren Spieler..." 
-        : `Warte auf ${data.count} weitere Spieler...`;
-    statusMsg.innerText = "⏳ Du hast abgegeben. " + msg;
-});
-
-// Enthüllung
-socket.on('roundReveal', (data) => {
-    gameInput.style.display = 'none'; 
-    sendBtn.style.display = 'none';   
-
-    startCountdown(REVEAL_DURATION_S);
-    
-    revealArea.style.display = 'flex';
-    revealArea.innerHTML = ''; 
-    
-    const historyTerms = [];
-    
-    data.answers.forEach(answer => {
-        const item = document.createElement('div');
-        item.className = 'reveal-item'; 
-        item.innerHTML = `
-            <div class="reveal-name">${answer.username}</div>
-            <div class="reveal-term">${answer.term}</div>
-        `;
-        revealArea.appendChild(item);
-        historyTerms.push(`${answer.username}: ${answer.term}`);
-    });
-
-    const entry = document.createElement('div');
-    entry.className = 'history-entry';
-    // KORREKTUR: Fügt HTML-Tags für die visuelle Hervorhebung hinzu (statt **), nutzt CSS dafür
-    entry.innerHTML = `<span class="history-topic">Begriff: ${data.topic}</span> <span class="history-separator">|</span> ${historyTerms.join(' <span class="history-separator">|</span> ')}`;
-    historyList.prepend(entry);
-    
-    if (historyList.children.length > 5) {
-        historyList.removeChild(historyList.lastChild);
-    }
-});
-
-// Neue Runde
-socket.on('newRound', (data) => {
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-    }
-    
-    gameInput.style.display = 'inline-block'; 
-    sendBtn.style.display = 'inline-block';   
-    
-    revealArea.style.display = 'none'; 
-    gameInput.disabled = false;
-    sendBtn.disabled = false;
-    gameInput.focus();
-    gameInput.value = ""; 
-    
-    topicText.innerText = data.topic;
-    statusMsg.innerText = "Gib deine Assoziation ein!";
-});
-
-
-socket.on('error', (msg) => {
-    alert("Fehler: " + msg);
-    lobbyMessage.innerText = msg;
-    lobbyView.style.display = 'block'; 
-    gameView.style.display = 'none';
-    if (copyButton) copyButton.style.display = 'none';
-});
-
-socket.on('disconnect', () => {
-    alert("Verbindung zum Server verloren!");
-    window.location.href = window.location.origin;
-});
+// Startet die App, wenn die Seite geladen ist
+renderWelcome();
