@@ -1,6 +1,7 @@
-const socket = io(); ({
+const socket = io({
     path: '/socket.io/'
 });
+
 const appContainer = document.getElementById('app');
 const messageArea = document.getElementById('message-area');
 const form = document.getElementById('term-form');
